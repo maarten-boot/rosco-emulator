@@ -20,6 +20,8 @@
  * Hardware:
  * - MC68000/68010 @ 10MHz, or MC68020/68030 @ 20MHz on the CPU upgrade
  * - 1MB DRAM at 0x000000, 1MB (max) ROM at 0xe00000
+ * - optional RAM expansion directly above it, contiguous up to 14MB in
+ *   total (-ram 5M for the 4MB expansion board); the firmware sizes it
  * - XR68C681 DUART at 0xf00000 (IRQ 4), two RS-232 channels
  * - SPI SD card bit-banged off the DUART output port
  * - IDE/ATA interface at 0xf80040 (IRQ 3)
@@ -42,6 +44,7 @@
 #include "cpu/m68000/m68030.h"
 #include "imagedev/snapquik.h"
 #include "machine/mc68681.h"
+#include "machine/ram.h"
 #include "machine/spi_sdcard.h"
 
 
@@ -58,6 +61,7 @@ public:
 		, m_host(*this, "host")
 		, m_sdcard(*this, "sdcard")
 		, m_ata(*this, "ata")
+		, m_ram(*this, RAM_TAG)
 	{ }
 
 protected:
@@ -91,6 +95,7 @@ private:
 
 	required_device<spi_sdcard_device> m_sdcard;
 	required_device<ata_interface_device> m_ata;
+	required_device<ram_device> m_ram;
 
 	emu_timer *m_bus_error_timer = nullptr;
 
@@ -120,7 +125,7 @@ public:
 	rosco_m68k_000_state(const machine_config &mconfig, device_type type, const char *tag)
 		: rosco_m68k_state(mconfig, type, tag)
 		, m_bootvect(*this, "bootvect")
-		, m_sysram(*this, "ram")
+		, m_sysram(*this, "sysram")
 	{ }
 
 	void rosco_m68k_000(machine_config &config);
@@ -144,7 +149,7 @@ public:
 	rosco_m68k_010_state(const machine_config &mconfig, device_type type, const char *tag)
 		: rosco_m68k_musashi_state(mconfig, type, tag)
 		, m_bootvect(*this, "bootvect")
-		, m_sysram(*this, "ram")
+		, m_sysram(*this, "sysram")
 	{ }
 
 	void rosco_m68k_010(machine_config &config);
@@ -167,7 +172,7 @@ public:
 	rosco_m68k_020_state(const machine_config &mconfig, device_type type, const char *tag)
 		: rosco_m68k_musashi_state(mconfig, type, tag)
 		, m_bootvect(*this, "bootvect")
-		, m_sysram(*this, "ram")
+		, m_sysram(*this, "sysram")
 	{ }
 
 	void rosco_m68k_020(machine_config &config);
@@ -190,7 +195,7 @@ public:
 	rosco_m68k_030_state(const machine_config &mconfig, device_type type, const char *tag)
 		: rosco_m68k_musashi_state(mconfig, type, tag)
 		, m_bootvect(*this, "bootvect")
-		, m_sysram(*this, "ram")
+		, m_sysram(*this, "sysram")
 	{ }
 
 	void rosco_m68k_030(machine_config &config);
@@ -304,6 +309,10 @@ void rosco_m68k_state::rosco_m68k(machine_config &config)
 	SPI_SDCARD(config, m_sdcard, 0);
 	m_sdcard->spi_miso_callback().set(m_duart, FUNC(xr68c681_device::ip2_w));
 
+	// Total RAM: the 1MB on board plus the expansion above it, which
+	// machine_start() maps in place of the bus error area.
+	RAM(config, m_ram).set_default_size("1M").set_extra_options("2M,3M,4M,5M,6M,8M,10M,12M,14M");
+
 	ATA_INTERFACE(config, m_ata, 0).options(ata_devices, "hdd", nullptr, false);
 	m_ata->irq_handler().set_inputline(m_maincpu, M68K_IRQ_3);
 
@@ -353,7 +362,7 @@ void rosco_m68k_state::write_green_led(int state)
 
 void rosco_m68k_state::mem_map(address_map &map)
 {
-	map(0x000000, 0x0fffff).ram().share("ram"); /* 1MB RAM */
+	map(0x000000, 0x0fffff).ram().share("sysram"); /* 1MB RAM */
 	map(0xe00000, 0xefffff).rom().region("monitor", 0); /* 1MB ROM (max) */
 	map(0xf00000, 0xf0001f).rw(m_duart, FUNC(xr68c681_device::read), FUNC(xr68c681_device::write)).umask16(0x00ff);
 	map(0xf80040, 0xf8004f).rw(m_ata, FUNC(ata_interface_device::cs0_r), FUNC(ata_interface_device::cs0_w)).umask16(0xffff);
@@ -433,6 +442,11 @@ void rosco_m68k_030_state::delegated_cpu_space_map(address_map &map)
 void rosco_m68k_state::machine_start()
 {
 	m_bus_error_timer = timer_alloc(FUNC(rosco_m68k_state::bus_error), this);
+
+	// Expansion RAM, contiguous with the on-board 1MB (the first 1MB of
+	// the RAM device is unused: the on-board RAM is the "sysram" share).
+	if (m_ram->size() > 0x100000)
+		m_maincpu->space(AS_PROGRAM).install_ram(0x100000, m_ram->size() - 1, m_ram->pointer() + 0x100000);
 
 	save_item(NAME(m_bus_error));
 }
@@ -564,25 +578,46 @@ void rosco_m68k_000_state::signal_bus_error(uint32_t address, bool rw)
  * build that ships in roms/.  To run a firmware you built yourself, drop
  * it in as rosco_m68k.rom and start with -novalidate or update the length
  * and hashes here to match.
+ *
+ * -bios v242 selects firmware 2.42 (release/version-2.42 of rosco_m68k,
+ * code/firmware/rosco_m68k_firmware, "make rosco_m68k.rom", m68k-elf-gcc
+ * 13.3 in the roscopeco/rosco_m68k image), as on a Classic v2 board in
+ * use: compare a port's behaviour against the real firmware.
  */
 ROM_START( rosco_m68k_000 )
 	ROM_REGION16_BE(0x100000, "monitor", 0)
-	ROM_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413) )
+	ROM_DEFAULT_BIOS("v250")
+	ROM_SYSTEM_BIOS(0, "v250", "Firmware 2.50.DEV")
+	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
+	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
 ROM_END
 
 ROM_START( rosco_m68k_010 )
 	ROM_REGION16_BE(0x100000, "monitor", 0)
-	ROM_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413) )
+	ROM_DEFAULT_BIOS("v250")
+	ROM_SYSTEM_BIOS(0, "v250", "Firmware 2.50.DEV")
+	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
+	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
 ROM_END
 
 ROM_START( rosco_m68k_020 )
 	ROM_REGION32_BE(0x100000, "monitor", 0)
-	ROM_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413) )
+	ROM_DEFAULT_BIOS("v250")
+	ROM_SYSTEM_BIOS(0, "v250", "Firmware 2.50.DEV")
+	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
+	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
 ROM_END
 
 ROM_START( rosco_m68k_030 )
 	ROM_REGION32_BE(0x100000, "monitor", 0)
-	ROM_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413) )
+	ROM_DEFAULT_BIOS("v250")
+	ROM_SYSTEM_BIOS(0, "v250", "Firmware 2.50.DEV")
+	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
+	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
 ROM_END
 
 } // anonymous namespace

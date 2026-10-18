@@ -58,3 +58,25 @@ image = "solderdemon/rosco_6502:latest"
 
 Then run `rosco -C /path/to/patched-firmware build --docker --clean`.
 This builds firmware; the emulator executable uses the C++/MAME Makefile.
+
+# rosco_m68k firmware 2.42
+
+`rosco_m68k_000.zip` to `rosco_m68k_030.zip` also contain
+`rosco_m68k_242.rom`, selected with `-bios v242` (the default BIOS `v250` is
+the 2.50.DEV `rosco_m68k.rom`). It is built, unmodified, from the rosco_m68k
+repository at `release/version-2.42`:
+
+```sh
+git archive release/version-2.42 code | tar -x -C /tmp/fw242
+cd /tmp/fw242/code/firmware/rosco_m68k_firmware
+docker run --rm -u "$(id -u):$(id -g)" --group-add 1001 -v /tmp/fw242:/tmp/fw242 \
+    -w "$PWD" --entrypoint /usr/bin/env roscopeco/rosco_m68k \
+    PATH=/home/linuxbrew/.linuxbrew/bin:/usr/bin:/bin make rosco_m68k.rom
+```
+
+(m68k-elf-gcc 13.3 and vasm from the `roscopeco/rosco_m68k` image; the
+default 68000 build, 1MB HUGEROM SST39SF040, console at 115200.)
+
+* Size: 43792 bytes (0xab10)
+* CRC32: `86950afb`
+* SHA1: `6ff2a6584b2f504e73428ffae2761deecbcffb5b`

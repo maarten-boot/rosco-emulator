@@ -297,6 +297,19 @@ Raw images work as-is; `.chd` images can be created with `chdman`, built by
 `make TOOLS=1`. The rosco_6502 has no IDE interface, so it only takes the SD
 card.
 
+The rosco_m68k machines have 1MB of RAM by default. `-ram` adds the RAM
+expansion above it, contiguous as on the real board (total 2M to 14M; `-ram
+5m` is the 4MB expansion board). `-bios v242` runs firmware 2.42 instead of
+the default 2.50.DEV build (`-listbios` lists them):
+
+```sh
+./rosco rosco_m68k_010 -bios v242 -ram 5m -hard1 sdcard.img
+```
+
+Firmware 2.42 stores its kernel API pointer at 0x400, over the System Data
+Block magic; programs that check the magic before reading the SDB (such as
+the memory size at 0x414) see no SDB under 2.42.
+
 ## Credits
 
 The rosco_m68k drivers come from the SBC MAME fork,
