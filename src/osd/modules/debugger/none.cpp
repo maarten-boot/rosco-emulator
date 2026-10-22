@@ -47,6 +47,9 @@ void debug_none::init_debugger(running_machine &machine)
 
 void debug_none::wait_for_debugger(device_t &device, bool firststop)
 {
+	// run the -debugscript commands first; the stop loop only reads the
+	// script while the CPU is stopped, and it no longer is after go()
+	m_machine->debugger().console().process_source_file();
 	m_machine->debugger().console().get_visible_cpu()->debug()->go();
 }
 
