@@ -5,6 +5,12 @@
 .github
 build/
 .ccache/
+# genie as built by a host build links against the host's glibc, which the
+# builder image may not have; leave it out so the image builds its own.
+3rdparty/genie/bin/
+3rdparty/genie/build/gmake.linux/obj/
+tmp/
+*.log
 rosco
 cfg/
 nvram/
