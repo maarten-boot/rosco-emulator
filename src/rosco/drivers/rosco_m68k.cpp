@@ -81,13 +81,13 @@ protected:
 	virtual void bootvec_reset() = 0;
 
 	// The 68000 core and the Musashi cores signal bus errors differently.
-	virtual void signal_bus_error(uint32_t address, bool rw) = 0;
+	virtual void signal_bus_error(uint32_t address, bool read) = 0;
 
-	uint16_t unmapped_ram_r(offs_t offset, uint16_t mem_mask);
-	void unmapped_ram_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	uint16_t unmapped_exp_r(offs_t offset, uint16_t mem_mask);
-	void unmapped_exp_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	void set_bus_error(uint32_t address, bool rw, uint16_t mem_mask);
+	// Base is the start of the range the handler is mapped at: handlers are
+	// passed offsets relative to it, not the address the CPU put out.
+	template <offs_t Base> uint16_t unmapped_r(offs_t offset, uint16_t mem_mask);
+	template <offs_t Base> void unmapped_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	void set_bus_error(uint32_t address, bool read);
 
 private:
 	required_device<rs232_port_device> m_terminal;
@@ -115,7 +115,7 @@ class rosco_m68k_musashi_state : public rosco_m68k_state
 protected:
 	using rosco_m68k_state::rosco_m68k_state;
 
-	virtual void signal_bus_error(uint32_t address, bool rw) override;
+	virtual void signal_bus_error(uint32_t address, bool read) override;
 };
 
 
@@ -140,7 +140,7 @@ private:
 	void bootvect_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
 	virtual void bootvec_reset() override;
-	virtual void signal_bus_error(uint32_t address, bool rw) override;
+	virtual void signal_bus_error(uint32_t address, bool read) override;
 };
 
 class rosco_m68k_010_state : public rosco_m68k_musashi_state
@@ -330,11 +330,11 @@ void rosco_m68k_state::rosco_m68k(machine_config &config)
 QUICKLOAD_LOAD_MEMBER(rosco_m68k_state::quickload_cb)
 {
 	constexpr offs_t LOAD_ADDRESS = 0x40000;
-	constexpr offs_t RAM_END = 0x100000;
+	const offs_t ram_end = m_ram->size();
 
 	const uint64_t length = image.length();
 
-	if (!length || (length > (RAM_END - LOAD_ADDRESS)))
+	if (!length || (length > (ram_end - LOAD_ADDRESS)))
 		return std::make_pair(image_error::INVALIDLENGTH, std::string());
 
 	std::vector<uint8_t> buffer(length);
@@ -369,9 +369,9 @@ void rosco_m68k_state::mem_map(address_map &map)
 	map(0xf80050, 0xf8005f).rw(m_ata, FUNC(ata_interface_device::cs1_r), FUNC(ata_interface_device::cs1_w)).umask16(0xffff);
 
 	// Unmapped areas to bus error...
-	map(0x100000, 0xdfffff).rw(FUNC(rosco_m68k_state::unmapped_ram_r), FUNC(rosco_m68k_state::unmapped_ram_w));
-	map(0xf00020, 0xf8003f).rw(FUNC(rosco_m68k_state::unmapped_exp_r), FUNC(rosco_m68k_state::unmapped_exp_w));
-	map(0xf80060, 0xfffdff).rw(FUNC(rosco_m68k_state::unmapped_exp_r), FUNC(rosco_m68k_state::unmapped_exp_w));
+	map(0x100000, 0xdfffff).rw(FUNC(rosco_m68k_state::unmapped_r<0x100000>), FUNC(rosco_m68k_state::unmapped_w<0x100000>));
+	map(0xf00020, 0xf8003f).rw(FUNC(rosco_m68k_state::unmapped_r<0xf00020>), FUNC(rosco_m68k_state::unmapped_w<0xf00020>));
+	map(0xf80060, 0xfffdff).rw(FUNC(rosco_m68k_state::unmapped_r<0xf80060>), FUNC(rosco_m68k_state::unmapped_w<0xf80060>));
 
 	delegated_mem_map(map);
 }
@@ -397,7 +397,7 @@ void rosco_m68k_020_state::delegated_mem_map(address_map &map)
 	m_bootvect[0](0x000000, 0x000007).w(FUNC(rosco_m68k_020_state::bootvect_w)); // ROM mirror just during reset
 
 	// Additional address space to bus error
-	map(0x01000000, 0xffffffff).rw(FUNC(rosco_m68k_020_state::unmapped_ram_r), FUNC(rosco_m68k_020_state::unmapped_ram_w));
+	map(0x01000000, 0xffffffff).rw(FUNC(rosco_m68k_020_state::unmapped_r<0x01000000>), FUNC(rosco_m68k_020_state::unmapped_w<0x01000000>));
 }
 
 void rosco_m68k_030_state::delegated_mem_map(address_map &map)
@@ -407,7 +407,7 @@ void rosco_m68k_030_state::delegated_mem_map(address_map &map)
 	m_bootvect[0](0x000000, 0x000007).w(FUNC(rosco_m68k_030_state::bootvect_w)); // ROM mirror just during reset
 
 	// Additional address space to bus error
-	map(0x01000000, 0xfffffdff).rw(FUNC(rosco_m68k_030_state::unmapped_ram_r), FUNC(rosco_m68k_030_state::unmapped_ram_w));
+	map(0x01000000, 0xfffffdff).rw(FUNC(rosco_m68k_030_state::unmapped_r<0x01000000>), FUNC(rosco_m68k_030_state::unmapped_w<0x01000000>));
 }
 
 void rosco_m68k_state::cpu_space_map(address_map &map)
@@ -507,30 +507,19 @@ void rosco_m68k_030_state::bootvect_w(offs_t offset, uint32_t data, uint32_t mem
 	m_bootvect.disable(); // redirect all upcoming accesses to masking RAM until reset.
 }
 
-uint16_t rosco_m68k_state::unmapped_ram_r(offs_t offset, uint16_t mem_mask)
+// Unmapped RAM and absent expansion devices both assert BERR. A byte access
+// to an odd address only drives the low data lines.
+template <offs_t Base>
+uint16_t rosco_m68k_state::unmapped_r(offs_t offset, uint16_t mem_mask)
 {
-	/* Unmapped RAM - bus error */
-	set_bus_error((offset << 1), 0, mem_mask);
+	set_bus_error(Base + (offset << 1) + (ACCESSING_BITS_8_15 ? 0 : 1), true);
 	return 0xff;
 }
 
-void rosco_m68k_state::unmapped_ram_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+template <offs_t Base>
+void rosco_m68k_state::unmapped_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	/* Unmapped RAM - bus error */
-	set_bus_error((offset << 1), 1, mem_mask);
-}
-
-uint16_t rosco_m68k_state::unmapped_exp_r(offs_t offset, uint16_t mem_mask)
-{
-	/* Unmapped expansion  - bus error */
-	set_bus_error((offset << 1) + 0xf00000, 0, mem_mask);
-	return 0xff;
-}
-
-void rosco_m68k_state::unmapped_exp_w(offs_t offset, uint16_t data, uint16_t mem_mask)
-{
-	/* These are expansion devices, if not present, they cause a bus error */
-	set_bus_error((offset << 1) + 0xf00000, 1, mem_mask);
+	set_bus_error(Base + (offset << 1) + (ACCESSING_BITS_8_15 ? 0 : 1), false);
 }
 
 TIMER_CALLBACK_MEMBER(rosco_m68k_state::bus_error)
@@ -538,7 +527,7 @@ TIMER_CALLBACK_MEMBER(rosco_m68k_state::bus_error)
 	m_bus_error = false;
 }
 
-void rosco_m68k_state::set_bus_error(uint32_t address, bool rw, uint16_t mem_mask)
+void rosco_m68k_state::set_bus_error(uint32_t address, bool read)
 {
 	if (m_bus_error)
 		return;
@@ -548,21 +537,21 @@ void rosco_m68k_state::set_bus_error(uint32_t address, bool rw, uint16_t mem_mas
 
 	m_bus_error = true;
 
-	signal_bus_error(address, rw);
+	signal_bus_error(address, read);
 
 	m_bus_error_timer->adjust(m_maincpu->cycles_to_attotime(16)); // let rmw cycles complete
 }
 
-void rosco_m68k_musashi_state::signal_bus_error(uint32_t address, bool rw)
+void rosco_m68k_musashi_state::signal_bus_error(uint32_t address, bool read)
 {
 	m68000_musashi_device *const cpu = downcast<m68000_musashi_device *>(m_maincpu.target());
 
-	cpu->set_buserror_details(address, rw, cpu->get_fc());
+	cpu->set_buserror_details(address, read ? 1 : 0, cpu->get_fc()); // 1 = read
 	cpu->set_input_line(M68K_LINE_BUSERROR, ASSERT_LINE);
 	cpu->set_input_line(M68K_LINE_BUSERROR, CLEAR_LINE);
 }
 
-void rosco_m68k_000_state::signal_bus_error(uint32_t address, bool rw)
+void rosco_m68k_000_state::signal_bus_error(uint32_t address, bool read)
 {
 	// The 68000 core tracks the faulting access itself, it just needs to be
 	// told to abort the access in progress.
