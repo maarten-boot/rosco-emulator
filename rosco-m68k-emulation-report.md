@@ -1,6 +1,7 @@
 # rosco_m68k emulation — repository report
 
-Date: 2026-10-23 · Branch: `rosco-m68k-ram-bios` (HEAD `f283c471eda`, tree clean)
+Date: 2026-10-23 · Written against `rosco-m68k-ram-bios` at `f283c471eda` and
+updated after the fixes merged in PR #2 (`b1ce74f4950`).
 
 ## 1. What this repository is
 
@@ -38,10 +39,14 @@ Supporting pieces:
 | Commit | Change |
 | --- | --- |
 | `de3ef70395b` | `-ram` expansion (1M–14M) and `-bios v242` for rosco_m68k |
-| `e06207686e2` | one-line change in `debuggdbstub.cpp` (author "Your Name <you@example.com>", message "debugstub") |
-| `f283c471eda` | `-debugger none` now runs `-debugscript` before resuming |
+| `93e0ae532cc` | gdb stub: map `m68010` to the 68000 register set |
+| `9d9c8ed08b4` | `-debugger none` now runs `-debugscript` before resuming |
+| `0c155ca9cca` | real bus-error fault address; quickload into expansion RAM (§5 items 1–2) |
+| `3b49f867ab6` | ignore `tmp/` |
 
-These two debugger commits are the only changes this tree makes to MAME's core
+`93e0ae532cc` and `9d9c8ed08b4` were rewritten (and force-pushed) on
+2026-10-23 to replace a placeholder author identity; they were originally
+`e06207686e2` and `f283c471eda`. The two debugger commits are the only changes this tree makes to MAME's core
 (`src/emu`, `src/devices`, `src/osd`) since the rosco target was created.
 
 ## 2. Emulated hardware (rosco_m68k Classic V2)
@@ -109,7 +114,7 @@ file header.
 
 ### Bus error emulation
 
-`set_bus_error()` (line 541) ignores side-effect-free (debugger) accesses. It
+`set_bus_error()` (line 530) ignores side-effect-free (debugger) accesses. It
 signals the CPU and then masks further bus errors for 16 CPU cycles, so that a
 read-modify-write cycle does not fault twice. The firmware relies on this to
 size RAM and probe for expansion hardware, and the `-ram` banner results below
@@ -123,7 +128,7 @@ show it working.
 | `v242` | `rosco_m68k_242.rom`, built unmodified from `release/version-2.42` | 0xAB10 | `86950afb` |
 
 The build recipe for 2.42 is documented in `roms/README.md`. The driver's
-comment block (line 573) explains how to run a self-built ROM
+comment block (line 562) explains how to run a self-built ROM
 (`-novalidate` / `scripts/rosco-test.sh`).
 
 ## 4. Verification run (this session, existing binary)
@@ -139,21 +144,41 @@ The 020/030 speed readings match the limitation the README documents: the
 Musashi cores do not model prefetch or cache timing, so the firmware's
 calibration loop reads about twice the configured 20 MHz.
 
-The binary predates `f283c471eda` (the binary was built 2026-10-18 and that
-commit landed 2026-10-22). The debugger fix is therefore **not in the current
-`./rosco`** until it is rebuilt. That commit does not affect the m68k driver.
+These runs used the binary from 2026-10-18. The binary has since been rebuilt
+with the fixes below, and all five machines (including `rosco_6502`) still
+pass `scripts/smoke-test.sh`.
+
+### Bus-error fix verification
+
+A hand-assembled test program was quickloaded at `0x40000`. It points the
+bus-error vector at a handler that copies the exception frame to `0x3000 +
+0x20*n` and resumes with the next test. A `-debugger none -debugscript` run
+(`gtime #6000`, then `save`) dumped the frames. Fault address reported:
+
+| Access | Before (68010) | After (68000, 68010, 68020, 68030) |
+| --- | --- | --- |
+| `move.b $200001,d0` | `0x100000` | `0x200001` |
+| `move.w d0,$200000` | `0x100000` | `0x200000` |
+| `move.b $F00021,d0` | `0xF00000` | `0xF00021` |
+| `move.w $F80060,d0` | `0xF00000` | `0xF80060` |
+| `move.w $2000000,d0` (68020/68030 only) | — | `0x2000000` |
+
+The read/write bit in the special status word was already correct before the
+fix, because Musashi takes it from its own access state for these frames. A
+900 KB quickload image is rejected with `-ram 1m` and loads and runs with
+`-ram 2m`.
 
 ## 5. Findings and observations
 
 Ordered roughly by impact.
 
-1. **[FIXED 2026-10-23, uncommitted] Quickload ignores RAM expansion.** `quickload_cb` hard-codes
-   `RAM_END = 0x100000` (line 333), so programs larger than 768 KB are rejected
-   even with `-ram 14m`. Using `m_ram->size()` would fix this.
+1. **[FIXED in `0c155ca9cca`] Quickload ignored RAM expansion.** `quickload_cb`
+   hard-coded `RAM_END = 0x100000`, so programs larger than 768 KB were
+   rejected even with `-ram 14m`. It now uses `m_ram->size()` (line 333).
 
-2. **[FIXED 2026-10-23, uncommitted] Bus-error fault addresses are wrong on the Musashi CPUs.** In MAME, a
-   handler's `offset` is relative to the start of its mapped range, but the
-   handlers rebuild the address as if it were not:
+2. **[FIXED in `0c155ca9cca`] Bus-error fault addresses were wrong on the
+   Musashi CPUs.** In MAME, a handler's `offset` is relative to the start of
+   its mapped range, but the handlers rebuilt the address as if it were not:
    - `unmapped_ram_r/w` reports `offset<<1`, which is off by `0x100000`. For
      the 020/030 upper range it is off by `0x01000000`.
    - `unmapped_exp_r/w` adds `0xf00000`, but the two ranges start at
@@ -163,8 +188,11 @@ Ordered roughly by impact.
    `set_buserror_details()` and so into the exception stack frame and the 020+
    fault address). The 68000 core tracks the address itself. Sizing and
    probing still work, but a bus-error handler that prints or decodes the
-   fault address will see the wrong value. To fix it, compute the address from
-   the range base, or read the CPU's current access address.
+   fault address saw the wrong value. The handlers are now
+   `unmapped_r/w<Base>`, templated on the range start, and add 1 for a
+   low-byte (odd address) access. The read flag passed to
+   `set_buserror_details()` was also inverted (its API says 1 = read) and was
+   corrected at the same time. See §4 for the verification.
 
 3. **`FFFE00–FFFFFF` is a hole with no bus error.** On the 000/010, and for the
    mirrored low 16 MB on the 020/030, reads from this range return 0 silently.
@@ -196,9 +224,9 @@ Ordered roughly by impact.
    - The OP7 `SPI_CS1` comment has no matching code.
 
 8. **Repo hygiene.**
-   - Commit `e06207686e2` has a placeholder author identity and the message
-     "debugstub". Consider rewording or squashing it before merging to
-     `master`.
+   - **[FIXED]** Commit `e06207686e2` had a placeholder author identity and
+     the message "debugstub". It was rewritten as `93e0ae532cc` and
+     force-pushed to `master` and `rosco-m68k-ram-bios`.
    - `cfg/rosco_m68k_010.cfg` contains an absolute NFS path to a MINIX image
      directory. It is ignored by git, so this is only local state.
 
