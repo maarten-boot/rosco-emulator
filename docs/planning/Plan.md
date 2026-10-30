@@ -17,6 +17,7 @@ Status as of 2026-10-30. Spec items are in `Spec.md`, tests in `Tests.md`.
 | Planning docs and test helpers | — | `7762bf19035`, PR #7 | all |
 | Merge flash ROM work into `master` | S10, S11 | PR #6 | T10–T15 |
 | Crosscheck of Spec/Plan/Tests against `master` `038df42e8be` | all | branch `docs/crosscheck-2026-10-30` | T1, T4, T6, T10–T15 re-run |
+| Tag `v0.10.0` (annotated) on the PR #6 merge `cb1cfe0b0df`; pushed. GitHub release and Docker Hub image not confirmed yet | S10, S11, S12 | tag `v0.10.0` | — |
 
 ## Open
 
@@ -49,6 +50,11 @@ In rough order of value.
     snapshot). It still describes a read-only ROM, and its coverage table and
     line numbers predate the flash work. Either mark it as a snapshot that
     points here, or update §2 and §6.
+
+12. **Confirm the `v0.10.0` release.** No GitHub release has appeared yet,
+    and this session's token can't read Actions runs. Check that
+    `release.yml` ran; if Actions is disabled, enable it and push the tag
+    again.
 
 ## Next step
 

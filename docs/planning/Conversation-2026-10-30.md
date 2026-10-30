@@ -83,3 +83,16 @@ Continuation of the 2026-10-23 session.
      - Tests: last results updated.
      - Plan: merge done; T16 is now open item 1; new item 11 for the
        outdated report.
+
+9. **Request:** tag the emulator merge (`dece8a1ff7c` was named).
+   - `dece8a1ff7c` is the merge into `rosco-m68k-ram-bios` and is not on
+     `master`; its tree is identical to `cb1cfe0b0df`, the PR #6 merge on
+     `master`. The user chose `cb1cfe0b0df`, version `v0.10.0`, annotated.
+   - Created the tag locally; the user pushed it.
+
+10. **Request:** status?
+    - The tag is on GitHub (`6fc2af26…` → `cb1cfe0b0df`), and the crosscheck
+      branch is pushed but not merged.
+    - No `v0.10.0` GitHub release yet. The Actions API returns 0 runs and a
+      403 for this token, so whether `release.yml` ran is unknown (Plan item
+      12).
