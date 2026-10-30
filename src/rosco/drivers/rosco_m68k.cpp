@@ -114,6 +114,7 @@ private:
 
 	void seed_flash_from_bios();
 
+	void reset_line_w(int state);
 	void write_red_led(int state);
 	void write_green_led(int state);
 
@@ -276,6 +277,10 @@ void rosco_m68k_state::rosco_m68k(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &rosco_m68k_state::mem_map);
 	m_maincpu->set_addrmap(m68000_base_device::AS_CPU_SPACE, &rosco_m68k_state::cpu_space_map);
 
+	// The RESET instruction drives the system reset line, which also resets
+	// the DUART (e.g. updateflash reboots into the new firmware this way).
+	m_maincpu->reset_cb().set(FUNC(rosco_m68k_state::reset_line_w));
+
 	// Set up DUART, both binding to serial ports and handling GPIO.
 	// IP0 = CTS_A
 	// IP1 = CTS_B
@@ -367,6 +372,12 @@ QUICKLOAD_LOAD_MEMBER(rosco_m68k_state::quickload_cb)
 	m_maincpu->set_pc(LOAD_ADDRESS);
 
 	return std::make_pair(std::error_condition(), std::string());
+}
+
+void rosco_m68k_state::reset_line_w(int state)
+{
+	if (state)
+		m_duart->reset();
 }
 
 void rosco_m68k_state::write_red_led(int state)
