@@ -3,8 +3,12 @@
 What the `rosco_m68k_*` machines in this tree must do. Each item has an ID
 that `Tests.md` and `Plan.md` refer to. Status is as of 2026-10-30.
 
-Items S10 and S11 are implemented on `feature/sst-flash` and are not on
-`master` yet.
+All items are on `master` (`038df42e8be`; S10/S11 came in with PR #6).
+
+**Crosscheck 2026-10-30** against `master` `038df42e8be`: every item
+below was found at the place named in "Where", and nothing in the code
+contradicts this spec. The tests in `Tests.md` were re-run on a fresh
+build of that commit; only T16 is still open.
 
 | ID | Requirement | Status | Where |
 | --- | --- | --- | --- |
@@ -19,7 +23,7 @@ Items S10 and S11 are implemented on `feature/sst-flash` and are not on
 | S7 | Quickload (`-quik`, `.bin`/`.rom`) copies a program to `0x40000` 3 s after start and jumps to it. The program may run up to the end of the configured RAM. | done (`0c155ca9cca`) | `quickload_cb` |
 | S8 | DUART: channel A is the console (115200 8N1), channel B is the host port. The SPI SD card is bit-banged on OP2/OP4/OP6/IP2. IRQ 4 is vectored by the DUART. | done | `rosco_m68k()` config |
 | S9 | The console can be reached over TCP with `-terminal null_modem -bitb socket.<host>:<port>`, input and output both ways. | done (MAME feature) | — |
-| S10 | The ROM is two SST39SF040 flash chips: even bytes (D15–D8) and odd bytes (D7–D0). | done on `feature/sst-flash` | `flash_r/w` |
+| S10 | The ROM is two SST39SF040 flash chips: even bytes (D15–D8) and odd bytes (D7–D0). | done (PR #6) | `flash_r/w` |
 | S10.1 | Software ID returns maker `0xBF` and device `0xB7` per chip. | done | `intelfsh` |
 | S10.2 | Sector erase (4 KB) and chip erase work. During an erase, reads from any address of the chip return toggling status (DQ6). | done (`55c081e3e6d`, `061407363b6`) | `intelfsh::read_full` |
 | S10.3 | Byte program can only clear bits; setting bits needs an erase. | done (`aa2de25502a`, `061407363b6`) | `intelfsh::write_full` |

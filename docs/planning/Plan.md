@@ -14,14 +14,17 @@ Status as of 2026-10-30. Spec items are in `Spec.md`, tests in `Tests.md`.
 | Docker checks: quickload, socket console, NVRAM in `/work` | S9, S12.1, S12.2 | — | T18–T20 |
 | Flash ROM as 2× SST39SF040, `RESET` resets the DUART (other session) | S10, S11 | `55c081e3e6d`…`aa2de25502a` | T10–T16 |
 | Review fixes on `feature/sst-flash`: SST changes limited to the 39SF parts, flash seeded only without NVRAM, README per-BIOS NVRAM | S10.2, S10.3, S10.5 | `061407363b6`, `7b135b0c754`, `cec16b598fa` | T10–T15 |
-| Planning docs and test helpers | — | branch `docs/planning` | all |
+| Planning docs and test helpers | — | `7762bf19035`, PR #7 | all |
+| Merge flash ROM work into `master` | S10, S11 | PR #6 | T10–T15 |
+| Crosscheck of Spec/Plan/Tests against `master` `038df42e8be` | all | branch `docs/crosscheck-2026-10-30` | T1, T4, T6, T10–T15 re-run |
 
 ## Open
 
 In rough order of value.
 
-1. **Merge `feature/sst-flash`** into `master` (it's pushed). Before that,
-   re-run T16 (`updateflash`) against `cec16b598fa`.
+1. **Re-run T16 (`updateflash`)** against `master`. PR #6 was merged
+   without it, and the flash seeding changed (`7b135b0c754`) after it last
+   passed. This needs the firmware tooling of the `../rosco-m68k` session.
 2. **`FFFE00–FFFFFF` returns 0 without a bus error**, and the 020/030 maps
    end at different addresses. Check the board's address decoding before
    changing anything. (Report §5 item 3.)
@@ -42,9 +45,12 @@ In rough order of value.
    Optional fast path: map the ROM directly while both chips are in
    read-array mode.
 10. **Tests**: add T6/T10–T14 to CI as a script, and add a test for S4.2.
+11. **`rosco-m68k-emulation-report.md` is out of date** (a 2026-10-23
+    snapshot). It still describes a read-only ROM, and its coverage table and
+    line numbers predate the flash work. Either mark it as a snapshot that
+    points here, or update §2 and §6.
 
 ## Next step
 
-Item 1: re-run `updateflash` on the current `feature/sst-flash`, then
-merge. After that, crosscheck `Spec.md`, `Plan.md`, `Tests.md` and the code
-again.
+Item 1: re-run `updateflash` against `master` and record the result as T16.
+Crosscheck again after the next functional change.

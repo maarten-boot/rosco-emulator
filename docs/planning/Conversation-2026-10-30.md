@@ -53,3 +53,33 @@ Continuation of the 2026-10-23 session.
      because the scratch copies had been cleaned up. Re-ran them through the
      new helpers: same results. The `dbgrun.sh` dump was widened to 24 bytes,
      so the 68030 fault address (offset 16) is included.
+
+6. **Request:** status?
+   - `feature/sst-flash` (8 commits) and `docs/planning` (1 commit) are
+     pushed but not merged. The Docker image is current.
+
+7. **User:** merged `docs/planning`.
+   - Found that `feature/sst-flash` had been merged as well (PR #6, then
+     PR #7). `master` is at `038df42e8be`.
+   - T16 (`updateflash`) was not re-run before that merge.
+
+8. **Request:** do the crosscheck.
+   - Updated local `master`, then branched `docs/crosscheck-2026-10-30`.
+   - Outside `docs/` and the `!/docs/` line in `.gitignore`, the code on
+     `master` is identical to the tested `cec16b598fa`.
+   - Located every Spec item (S1–S14) in the code. No contradictions.
+   - Rebuilt the host binary from `master`, then re-ran:
+     - T1 (5/5)
+     - T4 (PASS)
+     - T6 on all four CPUs (the 000 and 020 had last run on 10-23)
+     - T10–T14 on 010 and 030
+     - T15
+
+     All passed. The rebuild was needed because the binary on disk had been
+     linked at 17:44, while the checkout was on the pre-flash
+     `docs/planning`.
+   - Docs updated:
+     - Spec: S10/S11 are on `master`; crosscheck note added.
+     - Tests: last results updated.
+     - Plan: merge done; T16 is now open item 1; new item 11 for the
+       outdated report.
