@@ -1018,6 +1018,11 @@ void intelfsh_device::write_full(uint32_t address, uint32_t data)
 				if (address < 0x3a000 || address >= 0x3c000) // hardcoded for Dreamcast, TODO properly handle sector protection
 					m_data[address] &= data;
 			}
+			else if (m_maker_id == MFG_SST)
+			{
+				// NOR flash programming can only clear bits; 0 -> 1 needs an erase
+				m_data[address] &= data;
+			}
 			else
 			{
 				m_data[address] = data;
