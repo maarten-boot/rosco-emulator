@@ -19,7 +19,9 @@
  *
  * Hardware:
  * - MC68000/68010 @ 10MHz, or MC68020/68030 @ 20MHz on the CPU upgrade
- * - 1MB DRAM at 0x000000, 1MB (max) ROM at 0xe00000
+ * - 1MB DRAM at 0x000000, 1MB (max) ROM at 0xe00000: two SST39SF040
+ *   flash chips, even (D15-D8) and odd (D7-D0), programmable in place
+ *   (updateflash, libs/sst_flash); contents persist as NVRAM
  * - optional RAM expansion directly above it, contiguous up to 14MB in
  *   total (-ram 5M for the 4MB expansion board); the firmware sizes it
  * - XR68C681 DUART at 0xf00000 (IRQ 4), two RS-232 channels
@@ -43,6 +45,7 @@
 #include "cpu/m68000/m68020.h"
 #include "cpu/m68000/m68030.h"
 #include "imagedev/snapquik.h"
+#include "machine/intelfsh.h"
 #include "machine/mc68681.h"
 #include "machine/ram.h"
 #include "machine/spi_sdcard.h"
@@ -62,6 +65,8 @@ public:
 		, m_sdcard(*this, "sdcard")
 		, m_ata(*this, "ata")
 		, m_ram(*this, RAM_TAG)
+		, m_flash_even(*this, "flash_even")
+		, m_flash_odd(*this, "flash_odd")
 	{ }
 
 protected:
@@ -89,6 +94,12 @@ protected:
 	template <offs_t Base> void unmapped_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 	void set_bus_error(uint32_t address, bool read);
 
+	// The ROM is two byte-wide flash chips on the 16-bit bus. Only the
+	// chips in the accessed byte lanes are touched: a read in status mode
+	// toggles DQ6, so a spurious read would disturb the other chip.
+	uint16_t flash_r(offs_t offset, uint16_t mem_mask);
+	void flash_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+
 private:
 	required_device<rs232_port_device> m_terminal;
 	required_device<rs232_port_device> m_host;
@@ -96,8 +107,12 @@ private:
 	required_device<spi_sdcard_device> m_sdcard;
 	required_device<ata_interface_device> m_ata;
 	required_device<ram_device> m_ram;
+	required_device<sst_39sf040_device> m_flash_even;
+	required_device<sst_39sf040_device> m_flash_odd;
 
 	emu_timer *m_bus_error_timer = nullptr;
+
+	void seed_flash_from_bios();
 
 	void write_red_led(int state);
 	void write_green_led(int state);
@@ -313,6 +328,10 @@ void rosco_m68k_state::rosco_m68k(machine_config &config)
 	// machine_start() maps in place of the bus error area.
 	RAM(config, m_ram).set_default_size("1M").set_extra_options("2M,3M,4M,5M,6M,8M,10M,12M,14M");
 
+	// 1MB ROM = 2 x SST39SF040 (512KB each), even and odd bytes
+	SST_39SF040(config, m_flash_even);
+	SST_39SF040(config, m_flash_odd);
+
 	ATA_INTERFACE(config, m_ata, 0).options(ata_devices, "hdd", nullptr, false);
 	m_ata->irq_handler().set_inputline(m_maincpu, M68K_IRQ_3);
 
@@ -363,7 +382,7 @@ void rosco_m68k_state::write_green_led(int state)
 void rosco_m68k_state::mem_map(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram().share("sysram"); /* 1MB RAM */
-	map(0xe00000, 0xefffff).rom().region("monitor", 0); /* 1MB ROM (max) */
+	map(0xe00000, 0xefffff).rw(FUNC(rosco_m68k_state::flash_r), FUNC(rosco_m68k_state::flash_w)); /* 1MB flash ROM */
 	map(0xf00000, 0xf0001f).rw(m_duart, FUNC(xr68c681_device::read), FUNC(xr68c681_device::write)).umask16(0x00ff);
 	map(0xf80040, 0xf8004f).rw(m_ata, FUNC(ata_interface_device::cs0_r), FUNC(ata_interface_device::cs0_w)).umask16(0xffff);
 	map(0xf80050, 0xf8005f).rw(m_ata, FUNC(ata_interface_device::cs1_r), FUNC(ata_interface_device::cs1_w)).umask16(0xffff);
@@ -379,21 +398,21 @@ void rosco_m68k_state::mem_map(address_map &map)
 void rosco_m68k_000_state::delegated_mem_map(address_map &map)
 {
 	map(0x000000, 0x000007).view(m_bootvect);
-	m_bootvect[0](0x000000, 0x000007).rom().region("monitor", 0);                // After first write we act as RAM
+	m_bootvect[0](0x000000, 0x000007).r(FUNC(rosco_m68k_000_state::flash_r));       // After first write we act as RAM
 	m_bootvect[0](0x000000, 0x000007).w(FUNC(rosco_m68k_000_state::bootvect_w)); // ROM mirror just during reset
 }
 
 void rosco_m68k_010_state::delegated_mem_map(address_map &map)
 {
 	map(0x000000, 0x000007).view(m_bootvect);
-	m_bootvect[0](0x000000, 0x000007).rom().region("monitor", 0);                // After first write we act as RAM
+	m_bootvect[0](0x000000, 0x000007).r(FUNC(rosco_m68k_010_state::flash_r));       // After first write we act as RAM
 	m_bootvect[0](0x000000, 0x000007).w(FUNC(rosco_m68k_010_state::bootvect_w)); // ROM mirror just during reset
 }
 
 void rosco_m68k_020_state::delegated_mem_map(address_map &map)
 {
 	map(0x000000, 0x000007).view(m_bootvect);
-	m_bootvect[0](0x000000, 0x000007).rom().region("monitor", 0);                // After first write we act as RAM
+	m_bootvect[0](0x000000, 0x000007).r(FUNC(rosco_m68k_020_state::flash_r));       // After first write we act as RAM
 	m_bootvect[0](0x000000, 0x000007).w(FUNC(rosco_m68k_020_state::bootvect_w)); // ROM mirror just during reset
 
 	// Additional address space to bus error
@@ -403,7 +422,7 @@ void rosco_m68k_020_state::delegated_mem_map(address_map &map)
 void rosco_m68k_030_state::delegated_mem_map(address_map &map)
 {
 	map(0x000000, 0x000007).view(m_bootvect);
-	m_bootvect[0](0x000000, 0x000007).rom().region("monitor", 0);                // After first write we act as RAM
+	m_bootvect[0](0x000000, 0x000007).r(FUNC(rosco_m68k_030_state::flash_r));       // After first write we act as RAM
 	m_bootvect[0](0x000000, 0x000007).w(FUNC(rosco_m68k_030_state::bootvect_w)); // ROM mirror just during reset
 
 	// Additional address space to bus error
@@ -453,9 +472,58 @@ void rosco_m68k_state::machine_start()
 
 void rosco_m68k_state::machine_reset()
 {
+	// NVRAM has been loaded by now; a blank pair of chips (first run, or
+	// the nvram files were deleted) gets the selected BIOS image.
+	seed_flash_from_bios();
+
 	m_sdcard->spi_clock_w(CLEAR_LINE);
 
 	bootvec_reset();
+}
+
+void rosco_m68k_state::seed_flash_from_bios()
+{
+	uint8_t *const even = m_flash_even->base();
+	uint8_t *const odd = m_flash_odd->base();
+	constexpr offs_t CHIP_SIZE = 0x80000;
+
+	for (offs_t i = 0; i < CHIP_SIZE; i++)
+		if (even[i] != 0xff || odd[i] != 0xff)
+			return; // already programmed: keep what the machine flashed
+
+	// The region is the CPU's view of the ROM (16- or 32-bit big-endian);
+	// split it into the even (high) and odd (low) byte lanes.
+	memory_region *const rom = memregion("monitor");
+	auto rom_byte = [rom] (offs_t a) -> uint8_t
+	{
+		if (rom->bytewidth() == 4)
+			return rom->as_u32(a >> 2) >> ((3 - (a & 3)) * 8);
+		return rom->as_u16(a >> 1) >> ((1 - (a & 1)) * 8);
+	};
+
+	for (offs_t i = 0; i < CHIP_SIZE; i++)
+	{
+		even[i] = rom_byte(i * 2);
+		odd[i] = rom_byte(i * 2 + 1);
+	}
+}
+
+uint16_t rosco_m68k_state::flash_r(offs_t offset, uint16_t mem_mask)
+{
+	uint16_t data = 0;
+	if (ACCESSING_BITS_8_15)
+		data |= m_flash_even->read(offset) << 8;
+	if (ACCESSING_BITS_0_7)
+		data |= m_flash_odd->read(offset);
+	return data;
+}
+
+void rosco_m68k_state::flash_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+{
+	if (ACCESSING_BITS_8_15)
+		m_flash_even->write(offset, data >> 8);
+	if (ACCESSING_BITS_0_7)
+		m_flash_odd->write(offset, data & 0xff);
 }
 
 void rosco_m68k_000_state::bootvec_reset()
