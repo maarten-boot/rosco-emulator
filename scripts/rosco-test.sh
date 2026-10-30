@@ -132,7 +132,9 @@ esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-args=( "$machine" -skip_gameinfo )
+# Fresh NVRAM each run, so the flash ROM is seeded from the firmware under
+# test instead of keeping what an earlier run (or updateflash) left there.
+args=( "$machine" -skip_gameinfo -nvram_directory "$work/nvram" )
 if [ -n "$sdprogram" ]; then
 	sdcard="$work/sdcard.img"
 	python3 "$ROOT/scripts/make-sdcard.py" "$sdprogram" "$sdcard"

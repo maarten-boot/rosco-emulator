@@ -92,7 +92,10 @@ for check in "${checks[@]}"; do
 	log="$work/$machine.log"
 	: > "$console"
 
+	# Fresh NVRAM: the m68k flash ROM persists there, and the smoke test
+	# must boot the shipped BIOS, not whatever an earlier run flashed.
 	"$EMU" "$machine" -skip_gameinfo -rompath "$ROOT/roms" \
+		-nvram_directory "$work/nvram" \
 		-terminal null_modem -bitb "$console" \
 		-video none -sound none -midiprovider none \
 		-nothrottle -seconds_to_run "$seconds" \

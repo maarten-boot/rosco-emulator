@@ -590,6 +590,7 @@ uint32_t intelfsh_device::read_full(uint32_t address)
 		// reads outside of the erasing sector return normal data
 		if (
 			!(m_maker_id == MFG_FUJITSU && m_device_id == 0xad) /* Firebeat: pop'n music will poll sector 0 for status updates even when clearing section 1 and beyond */
+			&& !(m_maker_id == MFG_SST && m_device_id >= 0xb5 && m_device_id <= 0xb7) /* SST39SF010/020/040: DQ6 toggles on reads from any address while an erase is in progress (datasheet, "Toggle Bit") */
 			&& ((address < m_erase_sector) || (address >= m_erase_sector+(64*1024)))
 		)
 		{
@@ -1016,6 +1017,11 @@ void intelfsh_device::write_full(uint32_t address, uint32_t data)
 			{
 				if (address < 0x3a000 || address >= 0x3c000) // hardcoded for Dreamcast, TODO properly handle sector protection
 					m_data[address] &= data;
+			}
+			else if (m_maker_id == MFG_SST && m_device_id >= 0xb5 && m_device_id <= 0xb7)
+			{
+				// SST39SF010/020/040: programming can only clear bits; 0 -> 1 needs an erase
+				m_data[address] &= data;
 			}
 			else
 			{
