@@ -29,6 +29,7 @@ CPUS["M6502"] = true
 
 MACHINES["68681"] = true        -- XR68C681 DUART
 MACHINES["SPISDCARD"] = true    -- bit-banged SPI SD card
+MACHINES["INTELFLASH"] = true   -- SST39SF040 flash ROM chips
 
 --------------------------------------------------
 -- IDE/ATA interface

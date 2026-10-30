@@ -23,7 +23,8 @@ The rosco_6502 driver is new - see [Credits](#credits).
 | `rosco_m68k_030` | rosco_m68k Classic V2, MC68030 |
 | `rosco_6502`     | rosco_6502 r4, W65C02S         |
 
-The **Classic V2** machines emulate 1MB of DRAM, the XR68C681 DUART with both
+The **Classic V2** machines emulate 1MB of DRAM, the 1MB flash ROM (two
+SST39SF040 chips, see [Flash ROM](#flash-rom)), the XR68C681 DUART with both
 serial channels, the bit-banged SPI SD card hanging off the DUART output port,
 and the IDE/ATA interface. Unmapped addresses raise a bus error, which is what
 the firmware uses to size memory and probe for expansion hardware.
@@ -177,6 +178,26 @@ run:
 The hashes in the drivers describe the builds this tree was tested against. A
 different firmware only gets a `WRONG CHECKSUMS` warning and still runs, so
 there is no need to keep them in step while developing.
+
+### Flash ROM
+
+On the m68k machines the ROM is emulated as the board's two SST39SF040 flash
+chips (even and odd bytes), so `updateflash` and the libraries' `sst_flash`
+code work as on real hardware. The chips are NVRAM, kept per machine and per
+BIOS: `nvram/rosco_m68k_010/flash_even` and `flash_odd` for the default BIOS,
+`nvram/rosco_m68k_010_1/` for `-bios v242`, and so on.
+
+- On the first run of a machine and BIOS, or when its NVRAM files are missing,
+  the chips are filled from that BIOS image.
+- After that the machine boots whatever is in its flash. Switching `-bios`
+  still works, since each BIOS has its own flash, but **a replaced ROM file
+  no longer takes effect** while that BIOS's NVRAM exists. Delete the
+  directory (or pass a fresh `-nvram_directory`) to start from the image
+  again.
+- Erasing the flash from software sticks, as on the board: the machine then
+  has no firmware to boot until the NVRAM is deleted.
+- `scripts/smoke-test.sh` and `scripts/rosco-test.sh` always use a fresh
+  NVRAM directory.
 
 ## Testing firmware and programs
 
