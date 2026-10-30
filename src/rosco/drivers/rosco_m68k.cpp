@@ -112,7 +112,7 @@ private:
 
 	emu_timer *m_bus_error_timer = nullptr;
 
-	void seed_flash_from_bios();
+	void split_bios_for_flash();
 
 	void reset_line_w(int state);
 	void write_red_led(int state);
@@ -478,29 +478,28 @@ void rosco_m68k_state::machine_start()
 	if (m_ram->size() > 0x100000)
 		m_maincpu->space(AS_PROGRAM).install_ram(0x100000, m_ram->size() - 1, m_ram->pointer() + 0x100000);
 
+	// Before NVRAM is loaded: the flash chips start from these regions
+	// only when they have no NVRAM file yet.
+	split_bios_for_flash();
+
 	save_item(NAME(m_bus_error));
 }
 
 void rosco_m68k_state::machine_reset()
 {
-	// NVRAM has been loaded by now; a blank pair of chips (first run, or
-	// the nvram files were deleted) gets the selected BIOS image.
-	seed_flash_from_bios();
-
 	m_sdcard->spi_clock_w(CLEAR_LINE);
 
 	bootvec_reset();
 }
 
-void rosco_m68k_state::seed_flash_from_bios()
+// The flash chips take their initial contents (first run, or the nvram
+// files were deleted) from the regions named after them. Once they have
+// NVRAM they keep what the machine flashed, even if it erased them.
+void rosco_m68k_state::split_bios_for_flash()
 {
-	uint8_t *const even = m_flash_even->base();
-	uint8_t *const odd = m_flash_odd->base();
+	uint8_t *const even = memregion("flash_even")->base();
+	uint8_t *const odd = memregion("flash_odd")->base();
 	constexpr offs_t CHIP_SIZE = 0x80000;
-
-	for (offs_t i = 0; i < CHIP_SIZE; i++)
-		if (even[i] != 0xff || odd[i] != 0xff)
-			return; // already programmed: keep what the machine flashed
 
 	// The region is the CPU's view of the ROM (16- or 32-bit big-endian);
 	// split it into the even (high) and odd (low) byte lanes.
@@ -647,6 +646,10 @@ void rosco_m68k_000_state::signal_bus_error(uint32_t address, bool read)
  * it in as rosco_m68k.rom and start with -novalidate or update the length
  * and hashes here to match.
  *
+ * The ROM is flash: a replacement image only reaches the chips when they
+ * have no NVRAM yet, so delete nvram/<machine>/ (each BIOS has its own,
+ * e.g. rosco_m68k_010_1 for v242) or pass a fresh -nvram_directory.
+ *
  * -bios v242 selects firmware 2.42 (release/version-2.42 of rosco_m68k,
  * code/firmware/rosco_m68k_firmware, "make rosco_m68k.rom", m68k-elf-gcc
  * 13.3 in the roscopeco/rosco_m68k image), as on a Classic v2 board in
@@ -659,6 +662,10 @@ ROM_START( rosco_m68k_000 )
 	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
 	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
 	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
+
+	// Initial flash contents, split from "monitor" by split_bios_for_flash()
+	ROM_REGION(0x80000, "flash_even", ROMREGION_ERASEFF)
+	ROM_REGION(0x80000, "flash_odd", ROMREGION_ERASEFF)
 ROM_END
 
 ROM_START( rosco_m68k_010 )
@@ -668,6 +675,10 @@ ROM_START( rosco_m68k_010 )
 	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
 	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
 	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
+
+	// Initial flash contents, split from "monitor" by split_bios_for_flash()
+	ROM_REGION(0x80000, "flash_even", ROMREGION_ERASEFF)
+	ROM_REGION(0x80000, "flash_odd", ROMREGION_ERASEFF)
 ROM_END
 
 ROM_START( rosco_m68k_020 )
@@ -677,6 +688,10 @@ ROM_START( rosco_m68k_020 )
 	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
 	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
 	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
+
+	// Initial flash contents, split from "monitor" by split_bios_for_flash()
+	ROM_REGION(0x80000, "flash_even", ROMREGION_ERASEFF)
+	ROM_REGION(0x80000, "flash_odd", ROMREGION_ERASEFF)
 ROM_END
 
 ROM_START( rosco_m68k_030 )
@@ -686,6 +701,10 @@ ROM_START( rosco_m68k_030 )
 	ROMX_LOAD( "rosco_m68k.rom", 0x00000, 0x0da000, CRC(13eb1ac1) SHA1(b62d386fa662ac7af3ac5cf472071e0502b88413), ROM_BIOS(0) )
 	ROM_SYSTEM_BIOS(1, "v242", "Firmware 2.42")
 	ROMX_LOAD( "rosco_m68k_242.rom", 0x00000, 0x00ab10, CRC(86950afb) SHA1(6ff2a6584b2f504e73428ffae2761deecbcffb5b), ROM_BIOS(1) )
+
+	// Initial flash contents, split from "monitor" by split_bios_for_flash()
+	ROM_REGION(0x80000, "flash_even", ROMREGION_ERASEFF)
+	ROM_REGION(0x80000, "flash_odd", ROMREGION_ERASEFF)
 ROM_END
 
 } // anonymous namespace
