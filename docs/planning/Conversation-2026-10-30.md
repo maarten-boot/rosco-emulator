@@ -53,3 +53,46 @@ Continuation of the 2026-10-23 session.
      because the scratch copies had been cleaned up. Re-ran them through the
      new helpers: same results. The `dbgrun.sh` dump was widened to 24 bytes,
      so the 68030 fault address (offset 16) is included.
+
+6. **Request:** status?
+   - `feature/sst-flash` (8 commits) and `docs/planning` (1 commit) are
+     pushed but not merged. The Docker image is current.
+
+7. **User:** merged `docs/planning`.
+   - Found that `feature/sst-flash` had been merged as well (PR #6, then
+     PR #7). `master` is at `038df42e8be`.
+   - T16 (`updateflash`) was not re-run before that merge.
+
+8. **Request:** do the crosscheck.
+   - Updated local `master`, then branched `docs/crosscheck-2026-10-30`.
+   - Outside `docs/` and the `!/docs/` line in `.gitignore`, the code on
+     `master` is identical to the tested `cec16b598fa`.
+   - Located every Spec item (S1–S14) in the code. No contradictions.
+   - Rebuilt the host binary from `master`, then re-ran:
+     - T1 (5/5)
+     - T4 (PASS)
+     - T6 on all four CPUs (the 000 and 020 had last run on 10-23)
+     - T10–T14 on 010 and 030
+     - T15
+
+     All passed. The rebuild was needed because the binary on disk had been
+     linked at 17:44, while the checkout was on the pre-flash
+     `docs/planning`.
+   - Docs updated:
+     - Spec: S10/S11 are on `master`; crosscheck note added.
+     - Tests: last results updated.
+     - Plan: merge done; T16 is now open item 1; new item 11 for the
+       outdated report.
+
+9. **Request:** tag the emulator merge (`dece8a1ff7c` was named).
+   - `dece8a1ff7c` is the merge into `rosco-m68k-ram-bios` and is not on
+     `master`; its tree is identical to `cb1cfe0b0df`, the PR #6 merge on
+     `master`. The user chose `cb1cfe0b0df`, version `v0.10.0`, annotated.
+   - Created the tag locally; the user pushed it.
+
+10. **Request:** status?
+    - The tag is on GitHub (`6fc2af26…` → `cb1cfe0b0df`), and the crosscheck
+      branch is pushed but not merged.
+    - No `v0.10.0` GitHub release yet. The Actions API returns 0 runs and a
+      403 for this token, so whether `release.yml` ran is unknown (Plan item
+      12).
